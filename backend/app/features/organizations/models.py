@@ -1,13 +1,13 @@
-from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.db.mixins import TimestampMixin
 
 
-class Organization(Base):
+class Organization(TimestampMixin, Base):
     __tablename__ = "organizations"
 
     id: Mapped[UUID] = mapped_column(
@@ -25,14 +25,4 @@ class Organization(Base):
         nullable=False,
         unique=True,
         index=True,
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-    )
-
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
     )
