@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends
 from app.core.config import Settings
 from app.core.dependencies import get_settings
 
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
