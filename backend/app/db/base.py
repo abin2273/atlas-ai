@@ -6,3 +6,4 @@ class Base(DeclarativeBase):
 
 
 from app.features.organizations.models import Organization  # noqa: F401
+from app.features.users.models import User  # noqa: F401
