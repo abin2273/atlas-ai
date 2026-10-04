@@ -1,4 +1,14 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: atlas-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - atlas_redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+
   postgres:
     image: postgres:17
     container_name: atlas-postgres
@@ -14,3 +24,4 @@ services:
 
 volumes:
   atlas_postgres_data:
+  atlas_redis_data:

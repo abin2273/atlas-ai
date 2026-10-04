@@ -1,0 +1,19 @@
+{
+  "cases": [
+    {
+      "organization_id": "00000000-0000-0000-0000-000000000001",
+      "question": "What is the documented retention period?",
+      "reference_answer": "Use the retention period stated in the synthetic policy.",
+      "relevant_document_ids": [
+        "00000000-0000-0000-0000-000000000101"
+      ],
+      "should_abstain": false
+    },
+    {
+      "organization_id": "00000000-0000-0000-0000-000000000001",
+      "question": "Which office is on Mars?",
+      "relevant_document_ids": [],
+      "should_abstain": true
+    }
+  ]
+}
