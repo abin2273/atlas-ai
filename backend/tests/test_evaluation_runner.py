@@ -252,7 +252,6 @@ def test_answer_quality_metrics_are_calculated_from_reference_answer() -> None:
     assert result["answer_quality_case_count"] == 1
     assert result["answer_exact_match"] == 1.0
     assert result["answer_token_f1"] == 1.0
-    assert result["answer_semantic_similarity"] == 1.0
-    assert result["answer_similarity"] == 1.0
+    assert result["answer_token_jaccard_similarity"] == 1.0
     assert result["per_case"][0]["answer_exact_match"] == 1.0
-    assert result["per_case"][0]["answer_semantic_similarity"] == 1.0
+    assert result["per_case"][0]["answer_token_jaccard_similarity"] == 1.0
