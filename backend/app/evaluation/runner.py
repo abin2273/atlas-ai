@@ -2,6 +2,8 @@ import argparse
 import json
 import math
 import os
+import re
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Annotated
@@ -30,6 +32,8 @@ class EvaluationCase(BaseModel):
     def validate_expected_behavior(self) -> "EvaluationCase":
         if self.should_abstain and self.relevant_document_ids:
             raise ValueError("Abstention cases cannot declare relevant document IDs")
+        if self.should_abstain and self.reference_answer is not None:
+            raise ValueError("Abstention cases cannot declare a reference answer")
         if not self.should_abstain and not self.relevant_document_ids:
             raise ValueError(
                 "Answerable cases must declare at least one relevant document ID"
@@ -50,6 +54,58 @@ class RetrievalMetrics:
     recall_at_k: float
     reciprocal_rank_at_k: float
     ndcg_at_k: float
+
+
+@dataclass(frozen=True)
+class AnswerMetrics:
+    exact_match: float
+    token_f1: float
+    semantic_similarity: float
+
+
+def normalize_answer_tokens(text: str) -> list[str]:
+    return re.findall(r"\b[\w-]+\b", text.lower())
+
+
+def answer_quality_metrics(
+    reference_answer: str | None, generated_answer: str | None
+) -> AnswerMetrics | None:
+    if reference_answer is None or generated_answer is None:
+        return None
+    reference_tokens = normalize_answer_tokens(reference_answer)
+    generated_tokens = normalize_answer_tokens(generated_answer)
+    if not reference_tokens and not generated_tokens:
+        return AnswerMetrics(exact_match=1.0, token_f1=1.0, semantic_similarity=1.0)
+    if not reference_tokens or not generated_tokens:
+        return AnswerMetrics(exact_match=0.0, token_f1=0.0, semantic_similarity=0.0)
+    normalized_reference = " ".join(reference_tokens)
+    normalized_generated = " ".join(generated_tokens)
+    exact_match = float(normalized_reference == normalized_generated)
+    reference_counts = Counter(reference_tokens)
+    generated_counts = Counter(generated_tokens)
+    overlap = sum(
+        min(reference_counts[token], generated_counts[token])
+        for token in set(reference_counts) | set(generated_counts)
+    )
+    if overlap == 0:
+        token_f1 = 0.0
+    else:
+        precision = overlap / len(generated_tokens)
+        recall = overlap / len(reference_tokens)
+        token_f1 = 2 * precision * recall / (precision + recall)
+    reference_set = set(reference_tokens)
+    generated_set = set(generated_tokens)
+    if not reference_set and not generated_set:
+        semantic_similarity = 1.0
+    elif not reference_set or not generated_set:
+        semantic_similarity = 0.0
+    else:
+        semantic_similarity = len(reference_set & generated_set) / len(reference_set | generated_set)
+    return AnswerMetrics(
+        exact_match=exact_match,
+        token_f1=token_f1,
+        semantic_similarity=semantic_similarity,
+    )
 
 
 def retrieval_metrics(
@@ -106,6 +162,7 @@ def evaluate_dataset(
     )
     per_case: list[dict[str, object]] = []
     retrieval_scores: list[RetrievalMetrics] = []
+    answer_quality_scores: list[AnswerMetrics] = []
     abstention_correct = 0
     answerable_cases = 0
     citation_precisions: list[float] = []
@@ -145,6 +202,11 @@ def evaluate_dataset(
             correct_abstention = abstained is case.should_abstain
             abstention_correct += int(correct_abstention)
             total_citations += len(set(cited_ids))
+            quality = answer_quality_metrics(
+                case.reference_answer, answer_payload.get("answer")
+            )
+            if quality is not None:
+                answer_quality_scores.append(quality)
             if not case.should_abstain:
                 answerable_cases += 1
                 relevant = set(case.relevant_document_ids)
@@ -164,20 +226,24 @@ def evaluate_dataset(
                 unsupported_citations += len(set(cited_ids))
                 unsupported_answers += int(not abstained)
                 metric_data = {}
-            per_case.append(
-                {
-                    "case": index,
-                    "question": case.question,
-                    "reference_answer": case.reference_answer,
-                    "answer": answer_payload["answer"],
-                    "retrieved_document_ids": [str(value) for value in retrieved_ids],
-                    "cited_document_ids": [str(value) for value in cited_ids],
-                    "expected_abstention": case.should_abstain,
-                    "actual_abstention": abstained,
-                    "abstention_correct": correct_abstention,
-                    **metric_data,
-                }
-            )
+            per_case_entry: dict[str, object] = {
+                "case": index,
+                "question": case.question,
+                "reference_answer": case.reference_answer,
+                "answer": answer_payload["answer"],
+                "retrieved_document_ids": [str(value) for value in retrieved_ids],
+                "cited_document_ids": [str(value) for value in cited_ids],
+                "expected_abstention": case.should_abstain,
+                "actual_abstention": abstained,
+                "abstention_correct": correct_abstention,
+                **metric_data,
+            }
+            if quality is not None:
+                per_case_entry["answer_exact_match"] = quality.exact_match
+                per_case_entry["answer_token_f1"] = quality.token_f1
+                per_case_entry["answer_semantic_similarity"] = quality.semantic_similarity
+                per_case_entry["answer_similarity"] = quality.semantic_similarity
+            per_case.append(per_case_entry)
     finally:
         if owns_client:
             http.close()
@@ -194,6 +260,17 @@ def evaluate_dataset(
         "ndcg_at_k": mean([item.ndcg_at_k for item in retrieval_scores]),
         "abstention_accuracy": abstention_correct / len(dataset.cases),
         "answerable_case_count": answerable_cases,
+        "answer_quality_case_count": len(answer_quality_scores),
+        "answer_exact_match": mean(
+            [item.exact_match for item in answer_quality_scores]
+        ),
+        "answer_token_f1": mean([item.token_f1 for item in answer_quality_scores]),
+        "answer_semantic_similarity": mean(
+            [item.semantic_similarity for item in answer_quality_scores]
+        ),
+        "answer_similarity": mean(
+            [item.semantic_similarity for item in answer_quality_scores]
+        ),
         "citation_precision": mean(citation_precisions),
         "citation_recall": mean(citation_recalls),
         "unsupported_citation_count": unsupported_citations,
