@@ -1,0 +1,13 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/app/db/base.py" = ["E402"]
+"backend/migrations/**/*.py" = ["E", "I", "UP007", "UP035"]
+
+[tool.ruff.format]
+exclude = ["backend/migrations/**/*.py"]

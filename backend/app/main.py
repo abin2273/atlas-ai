@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.logging import configure_logging
+from app.db.init_db import initialize_database
 
 configure_logging()
 
@@ -16,9 +17,8 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("AtlasAI application starting")
-
+    initialize_database()
     yield
-
     logger.info("AtlasAI application shutting down")
 
 
@@ -35,7 +35,6 @@ app.include_router(api_router)
 @app.get("/")
 async def root() -> dict[str, str]:
     logger.info("Root endpoint requested")
-
     return {
         "project": settings.app_name,
         "status": "running",
