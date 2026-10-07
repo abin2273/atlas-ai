@@ -264,8 +264,9 @@ def test_broker_failure_is_persisted_as_failed_and_reported(monkeypatch) -> None
             headers=headers,
             json={"name": "Broker failure org", "slug": f"broker-{uuid4().hex}"},
         )
+        organization_id = organization.json()["id"]
         response = client.post(
-            f"/api/v1/organizations/{organization.json()['id']}/documents",
+            f"/api/v1/organizations/{organization_id}/documents",
             headers=headers,
             json={
                 "title": "Unqueued memo",
@@ -276,7 +277,11 @@ def test_broker_failure_is_persisted_as_failed_and_reported(monkeypatch) -> None
         assert response.status_code == 503
         assert "could not be queued" in response.json()["detail"]
         with SessionLocal() as db:
-            failed = db.query(Document).filter_by(source_name="unqueued.txt").one()
+            failed = (
+                db.query(Document)
+                .filter_by(organization_id=UUID(organization_id), source_name="unqueued.txt")
+                .one()
+            )
             assert failed.processing_status == DocumentStatus.FAILED
             assert failed.processing_error == "Document processing could not be queued"
             assert failed.storage_key is not None

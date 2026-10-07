@@ -199,3 +199,59 @@ def test_evaluation_propagates_api_errors() -> None:
         evaluate_dataset(
             dataset, base_url="http://atlas.test", token="unused", client=client
         )
+
+
+def test_abstention_cases_reject_reference_answers() -> None:
+    with pytest.raises(ValidationError, match="reference answer"):
+        EvaluationDataset.model_validate(
+            {
+                "cases": [
+                    {
+                        "organization_id": str(ORG_ID),
+                        "question": "What is on Mars?",
+                        "should_abstain": True,
+                        "reference_answer": "The office on Mars is not documented.",
+                    }
+                ]
+            }
+        )
+
+
+def test_answer_quality_metrics_are_calculated_from_reference_answer() -> None:
+    dataset = EvaluationDataset.model_validate(
+        {
+            "cases": [
+                {
+                    "organization_id": str(ORG_ID),
+                    "question": "What is documented?",
+                    "reference_answer": "The retention period is 7 years.",
+                    "relevant_document_ids": [str(DOC_A)],
+                }
+            ]
+        }
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/hybrid-search"):
+            payload = {"results": [{"document_id": str(DOC_A)}]}
+        else:
+            payload = {
+                "abstained": False,
+                "citations": [{"document_id": str(DOC_A)}],
+                "answer": "The retention period is 7 years.",
+            }
+        return httpx.Response(200, json=payload)
+
+    with httpx.Client(
+        base_url="http://atlas.test", transport=httpx.MockTransport(handler)
+    ) as client:
+        result = evaluate_dataset(
+            dataset, base_url="http://atlas.test", token="unused", client=client
+        )
+
+    assert result["answer_quality_case_count"] == 1
+    assert result["answer_exact_match"] == 1.0
+    assert result["answer_token_f1"] == 1.0
+    assert result["answer_token_jaccard_similarity"] == 1.0
+    assert result["per_case"][0]["answer_exact_match"] == 1.0
+    assert result["per_case"][0]["answer_token_jaccard_similarity"] == 1.0
